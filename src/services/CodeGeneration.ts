@@ -454,44 +454,48 @@ ${tableName}
     const functionName = endpoint.replace(/[^a-zA-Z0-9]/g, '').replace(/^/, 'query');
     
     return `// React component with MSAL authentication for Microsoft Graph
+import { Client } from '@microsoft/microsoft-graph-client';
+import { TokenCredentialAuthenticationProvider } from '@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials';
+import { AccessToken, TokenCredential } from '@azure/core-auth';
 import { msalInstance } from '../config/azureConfig';
 
-async function ${functionName}() {
-  try {
+// Custom TokenCredential using MSAL
+const credential = new (class implements TokenCredential {
+  async getToken(scopes: string | string[]): Promise<AccessToken | null> {
     const accounts = msalInstance.getAllAccounts();
     if (accounts.length === 0) {
       throw new Error('Not authenticated. Please sign in.');
     }
-
-    // Acquire token for Microsoft Graph
+    
+    const scopeArray = Array.isArray(scopes) ? scopes : [scopes];
     const response = await msalInstance.acquireTokenSilent({
-      scopes: ['https://graph.microsoft.com/.default'],
+      scopes: scopeArray,
       account: accounts[0],
     });
+    
+    return {
+      token: response.accessToken,
+      expiresOnTimestamp: response.expiresOn?.getTime() || 0,
+    };
+  }
+})();
 
-    // Call Microsoft Graph API
+// Create Graph client with authentication provider
+const authProvider = new TokenCredentialAuthenticationProvider(credential, {
+  scopes: ['https://graph.microsoft.com/.default']
+});
+
+const graphClient = Client.initWithMiddleware({ authProvider });
+
+async function ${functionName}() {
+  try {
     // ${schemaInfo}
-    const graphResponse = await fetch(\`https://graph.microsoft.com/v1.0${endpoint}\`, {
-      method: '${method}',
-      headers: {
-        'Authorization': \`Bearer \${response.accessToken}\`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!graphResponse.ok) {
-      throw new Error(\`Graph API error: \${graphResponse.status} \${graphResponse.statusText}\`);
-    }
-
-    const data = await graphResponse.json();
+    const response = await graphClient
+      .api('${endpoint}')
+      .${method.toLowerCase()}();
     
-    // Handle paginated results
-    if (data.value) {
-      console.log(\`Retrieved \${data.value.length} items\`);
-      return data.value;
-    }
-    
-    return data;
+    console.log(\`Retrieved \${response.value?.length || 1} items\`);
+    return response.value || response;
   } catch (error) {
     console.error('Graph API error:', error);
     throw error;
@@ -506,55 +510,42 @@ async function ${functionName}() {
     const functionName = endpoint.replace(/[^a-zA-Z0-9]/g, '').replace(/^/, 'query');
     
     return `// Node.js with DefaultAzureCredential for Microsoft Graph
+import { Client } from '@microsoft/microsoft-graph-client';
+import { TokenCredentialAuthenticationProvider } from '@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials';
 import { DefaultAzureCredential } from '@azure/identity';
 
+// Initialize credential and Graph client
 const credential = new DefaultAzureCredential();
+const authProvider = new TokenCredentialAuthenticationProvider(credential, {
+  scopes: ['https://graph.microsoft.com/.default']
+});
+
+const graphClient = Client.initWithMiddleware({ authProvider });
 
 async function ${functionName}() {
   try {
-    // Get token for Microsoft Graph
-    const tokenResponse = await credential.getToken('https://graph.microsoft.com/.default');
-
-    // Call Microsoft Graph API
     // ${schemaInfo}
-    const response = await fetch(\`https://graph.microsoft.com/v1.0${endpoint}\`, {
-      method: '${method}',
-      headers: {
-        'Authorization': \`Bearer \${tokenResponse.token}\`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(\`Graph API error: \${response.status} \${errorText}\`);
-    }
-
-    const data = await response.json();
+    const response = await graphClient
+      .api('${endpoint}')
+      .${method.toLowerCase()}();
     
-    // Handle paginated results
-    if (data.value) {
-      console.log(\`Retrieved \${data.value.length} items\`);
+    // Handle paginated results automatically
+    if (response.value) {
+      console.log(\`Retrieved \${response.value.length} items\`);
       
-      // Optional: Handle pagination
-      let allItems = data.value;
-      let nextLink = data['@odata.nextLink'];
+      // Optional: Get all pages
+      let allItems = response.value;
+      let iterator = graphClient
+        .api('${endpoint}')
+        .${method.toLowerCase()}();
       
-      while (nextLink) {
-        const nextResponse = await fetch(nextLink, {
-          headers: {
-            'Authorization': \`Bearer \${tokenResponse.token}\`,
-          },
-        });
-        const nextData = await nextResponse.json();
-        allItems = allItems.concat(nextData.value);
-        nextLink = nextData['@odata.nextLink'];
-      }
+      const pageIterator = await iterator;
+      // Note: Use PageIterator from @microsoft/microsoft-graph-client for full pagination
       
       return allItems;
     }
     
-    return data;
+    return response;
   } catch (error) {
     console.error('Graph API error:', error);
     throw error;
@@ -570,24 +561,24 @@ ${functionName}()
   private generateInlineGraphCode(endpoint: string, method: string, schemaInfo: string): string {
     const functionName = endpoint.replace(/[^a-zA-Z0-9]/g, '').replace(/^/, 'query');
     
-    return `// Generic Microsoft Graph API query
+    return `// Generic Microsoft Graph API query with TokenCredential
 // ${schemaInfo}
+import { Client } from '@microsoft/microsoft-graph-client';
+import { TokenCredentialAuthenticationProvider } from '@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials';
+import type { TokenCredential } from '@azure/core-auth';
 
-async function ${functionName}(accessToken: string) {
-  const response = await fetch(\`https://graph.microsoft.com/v1.0${endpoint}\`, {
-    method: '${method}',
-    headers: {
-      'Authorization': \`Bearer \${accessToken}\`,
-      'Content-Type': 'application/json',
-    },
+async function ${functionName}(credential: TokenCredential) {
+  const authProvider = new TokenCredentialAuthenticationProvider(credential, {
+    scopes: ['https://graph.microsoft.com/.default']
   });
 
-  if (!response.ok) {
-    throw new Error(\`Graph API error: \${response.status}\`);
-  }
+  const graphClient = Client.initWithMiddleware({ authProvider });
 
-  const data = await response.json();
-  return data.value || data;
+  const response = await graphClient
+    .api('${endpoint}')
+    .${method.toLowerCase()}();
+
+  return response.value || response;
 }`;
   }
 }

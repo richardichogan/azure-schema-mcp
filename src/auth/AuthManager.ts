@@ -35,8 +35,9 @@ export class AuthManager {
 
   /**
    * Get an access token, using cached token if still valid or acquiring a new one
+   * Note: Always requests both Log Analytics and Graph API scopes to avoid re-authentication
    */
-  async getToken(scopes: string[] = ['https://api.loganalytics.io/.default']): Promise<string> {
+  async getToken(scopes: string[] = ['https://api.loganalytics.io/.default', 'https://graph.microsoft.com/.default']): Promise<string> {
     // Check if cached token is still valid
     if (this.cachedToken && this.cachedToken.expiresOn > Date.now()) {
       return this.cachedToken.token;
@@ -70,10 +71,10 @@ export class AuthManager {
   }
 
   /**
-   * Get Microsoft Graph token
+   * Get Microsoft Graph token (uses same token with both scopes)
    */
   async getGraphToken(): Promise<string> {
-    return this.getToken(['https://graph.microsoft.com/.default']);
+    return this.getToken();
   }
 
   /**

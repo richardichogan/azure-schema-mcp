@@ -9,6 +9,13 @@ export interface SDKCodeParams {
   authType?: 'msal-browser' | 'default-credential';
 }
 
+export interface GraphSDKCodeParams {
+  endpoint: string;
+  framework?: 'react' | 'node' | 'inline';
+  authType?: 'msal-browser' | 'default-credential';
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+}
+
 export interface ExampleQueryParams {
   tableName: string;
   operation: 'simple_select' | 'filter' | 'aggregation' | 'parse_json' | 'mv_expand';
@@ -416,6 +423,172 @@ ${tableName}
       suggestion: 'Use VS Code search or grep to find examples of: ' + tableName,
       examples: [],
     };
+  }
+
+  /**
+   * Generate SDK code for Microsoft Graph API queries
+   */
+  async generateGraphSDKCode(params: GraphSDKCodeParams): Promise<string> {
+    const { endpoint, framework = 'inline', authType = 'msal-browser', method = 'GET' } = params;
+
+    // Get schema to include in comments if available
+    let schemaInfo = '';
+    try {
+      const schema = await this.schemaDiscovery.getGraphAPISchema(endpoint, 2);
+      const properties = Object.keys(schema.properties).slice(0, 5);
+      schemaInfo = `Properties: ${properties.join(', ')}${Object.keys(schema.properties).length > 5 ? '...' : ''}`;
+    } catch {
+      schemaInfo = 'Schema discovery not available';
+    }
+
+    if (framework === 'react' && authType === 'msal-browser') {
+      return this.generateReactGraphCode(endpoint, method, schemaInfo);
+    } else if (framework === 'node' || authType === 'default-credential') {
+      return this.generateNodeGraphCode(endpoint, method, schemaInfo);
+    } else {
+      return this.generateInlineGraphCode(endpoint, method, schemaInfo);
+    }
+  }
+
+  private generateReactGraphCode(endpoint: string, method: string, schemaInfo: string): string {
+    const functionName = endpoint.replace(/[^a-zA-Z0-9]/g, '').replace(/^/, 'query');
+    
+    return `// React component with MSAL authentication for Microsoft Graph
+import { msalInstance } from '../config/azureConfig';
+
+async function ${functionName}() {
+  try {
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length === 0) {
+      throw new Error('Not authenticated. Please sign in.');
+    }
+
+    // Acquire token for Microsoft Graph
+    const response = await msalInstance.acquireTokenSilent({
+      scopes: ['https://graph.microsoft.com/.default'],
+      account: accounts[0],
+    });
+
+    // Call Microsoft Graph API
+    // ${schemaInfo}
+    const graphResponse = await fetch(\`https://graph.microsoft.com/v1.0${endpoint}\`, {
+      method: '${method}',
+      headers: {
+        'Authorization': \`Bearer \${response.accessToken}\`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!graphResponse.ok) {
+      throw new Error(\`Graph API error: \${graphResponse.status} \${graphResponse.statusText}\`);
+    }
+
+    const data = await graphResponse.json();
+    
+    // Handle paginated results
+    if (data.value) {
+      console.log(\`Retrieved \${data.value.length} items\`);
+      return data.value;
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Graph API error:', error);
+    throw error;
+  }
+}
+
+// Usage in React component:
+// const data = await ${functionName}();`;
+  }
+
+  private generateNodeGraphCode(endpoint: string, method: string, schemaInfo: string): string {
+    const functionName = endpoint.replace(/[^a-zA-Z0-9]/g, '').replace(/^/, 'query');
+    
+    return `// Node.js with DefaultAzureCredential for Microsoft Graph
+import { DefaultAzureCredential } from '@azure/identity';
+
+const credential = new DefaultAzureCredential();
+
+async function ${functionName}() {
+  try {
+    // Get token for Microsoft Graph
+    const tokenResponse = await credential.getToken('https://graph.microsoft.com/.default');
+
+    // Call Microsoft Graph API
+    // ${schemaInfo}
+    const response = await fetch(\`https://graph.microsoft.com/v1.0${endpoint}\`, {
+      method: '${method}',
+      headers: {
+        'Authorization': \`Bearer \${tokenResponse.token}\`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(\`Graph API error: \${response.status} \${errorText}\`);
+    }
+
+    const data = await response.json();
+    
+    // Handle paginated results
+    if (data.value) {
+      console.log(\`Retrieved \${data.value.length} items\`);
+      
+      // Optional: Handle pagination
+      let allItems = data.value;
+      let nextLink = data['@odata.nextLink'];
+      
+      while (nextLink) {
+        const nextResponse = await fetch(nextLink, {
+          headers: {
+            'Authorization': \`Bearer \${tokenResponse.token}\`,
+          },
+        });
+        const nextData = await nextResponse.json();
+        allItems = allItems.concat(nextData.value);
+        nextLink = nextData['@odata.nextLink'];
+      }
+      
+      return allItems;
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Graph API error:', error);
+    throw error;
+  }
+}
+
+// Run the query
+${functionName}()
+  .then(data => console.log('Data:', data))
+  .catch(err => console.error('Error:', err));`;
+  }
+
+  private generateInlineGraphCode(endpoint: string, method: string, schemaInfo: string): string {
+    const functionName = endpoint.replace(/[^a-zA-Z0-9]/g, '').replace(/^/, 'query');
+    
+    return `// Generic Microsoft Graph API query
+// ${schemaInfo}
+
+async function ${functionName}(accessToken: string) {
+  const response = await fetch(\`https://graph.microsoft.com/v1.0${endpoint}\`, {
+    method: '${method}',
+    headers: {
+      'Authorization': \`Bearer \${accessToken}\`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(\`Graph API error: \${response.status}\`);
+  }
+
+  const data = await response.json();
+  return data.value || data;
+}`;
   }
 }
 

@@ -305,12 +305,40 @@ async function main() {
     }
   );
 
+  // Tool: Generate Graph SDK Code
+  server.registerTool(
+    'generate_graph_sdk_code',
+    {
+      title: 'Generate Graph SDK Code',
+      description: 'Generate working TypeScript/JavaScript code to query Microsoft Graph API',
+      inputSchema: {
+        endpoint: z.string().describe('Graph API endpoint path (e.g., "/security/alerts")'),
+        framework: z.enum(['react', 'node', 'inline']).default('inline').describe('Framework: react (MSAL browser), node (DefaultAzureCredential), or inline (generic)'),
+        authType: z.enum(['msal-browser', 'default-credential']).default('msal-browser').describe('Authentication type'),
+        method: z.enum(['GET', 'POST', 'PATCH', 'DELETE']).default('GET').describe('HTTP method'),
+      },
+      outputSchema: {
+        code: z.string(),
+      },
+    },
+    async ({ endpoint, framework, authType, method }) => {
+      const code = await codeGeneration.generateGraphSDKCode({ endpoint, framework, authType, method });
+      return {
+        content: [{
+          type: 'text',
+          text: code,
+        }],
+        structuredContent: { code },
+      };
+    }
+  );
+
   // Connect server to stdio transport
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
   console.error('Azure Schema MCP Server running on stdio');
-  console.error('Available tools: get_kql_table_schema, test_kql_query, list_tables, get_graph_api_schema, refresh_schema, generate_sdk_code, generate_example_query, detect_table_workspace, find_working_query_examples');
+  console.error('Available tools: get_kql_table_schema, test_kql_query, list_tables, get_graph_api_schema, refresh_schema, generate_sdk_code, generate_example_query, detect_table_workspace, find_working_query_examples, generate_graph_sdk_code');
 }
 
 main().catch((error) => {

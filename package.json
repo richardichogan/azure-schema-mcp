@@ -1,0 +1,37 @@
+{
+  "name": "azure-schema-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for Azure Log Analytics schema discovery with device code authentication",
+  "type": "module",
+  "main": "build/index.js",
+  "bin": {
+    "azure-schema-mcp": "./build/index.js"
+  },
+  "scripts": {
+    "build": "tsc && chmod 755 build/index.js",
+    "dev": "tsx src/index.ts",
+    "start": "node build/index.js",
+    "clean": "rm -rf build"
+  },
+  "keywords": [
+    "mcp",
+    "azure",
+    "log-analytics",
+    "schema",
+    "kql"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@azure/identity": "^4.13.0",
+    "@azure/monitor-query": "^1.3.3",
+    "@modelcontextprotocol/sdk": "^1.22.0",
+    "dotenv": "^17.2.3",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

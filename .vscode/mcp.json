@@ -1,0 +1,12 @@
+{
+  "servers": {
+    "azure-schema-mcp": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["C:\\Users\\RichardHogan\\Development\\azure-schema-mcp\\build\\index.js"],
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  }
+}

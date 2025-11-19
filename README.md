@@ -195,6 +195,91 @@ User: "Refresh the schema cache for SecurityAlert"
 AI calls: refresh_schema({ source: "SecurityAlert" })
 ```
 
+
+### 6. `generate_sdk_code`
+Generate working TypeScript/JavaScript code patterns for querying a table.
+
+**Parameters:**
+- `tableName` (string): Name of the table (e.g., "QualysHostDetectionV3_CL")
+- `framework` (string, optional): "react", "node", or "inline" (default: "inline")
+- `authType` (string, optional): "msal-browser" or "default-credential" (default: "msal-browser")
+
+**Example:**
+```
+User: "Generate React code to query SecurityAlert"
+AI calls: generate_sdk_code({ 
+  tableName: "SecurityAlert",
+  framework: "react",
+  authType: "msal-browser"
+})
+```
+
+**Returns:**
+Complete working code including imports, authentication setup, query execution, and error handling.
+
+### 7. `generate_example_query`
+Generate KQL query examples based on table schema and operation type.
+
+**Parameters:**
+- `tableName` (string): Name of the table
+- `operation` (string): "simple_select", "filter", "aggregation", "parse_json", or "mv_expand"
+- `timeRange` (string, optional): Time range in KQL format (default: "30d")
+
+**Example:**
+```
+User: "Show me how to parse JSON in QualysHostDetectionV3_CL"
+AI calls: generate_example_query({ 
+  tableName: "QualysHostDetectionV3_CL",
+  operation: "parse_json"
+})
+```
+
+**Returns:**
+Working KQL query with comments explaining each operator.
+
+### 8. `detect_table_workspace`
+Test which workspace contains a table and return metadata.
+
+**Parameters:**
+- `tableName` (string): Name of the table to search for
+- `workspaceIds` (array, optional): Array of workspace IDs to check
+
+**Example:**
+```
+User: "Which workspace has QualysHostDetectionV3_CL?"
+AI calls: detect_table_workspace({ 
+  tableName: "QualysHostDetectionV3_CL"
+})
+```
+
+**Returns:**
+```json
+{
+  "tableName": "QualysHostDetectionV3_CL",
+  "foundIn": [
+    {
+      "workspaceId": "6f6d3595-d0ef-4469-bc55-1ee067c3cc13",
+      "workspaceName": "secondary",
+      "hasData": true,
+      "rowCount": 27,
+      "dateRange": {
+        "earliest": "2025-10-20T00:00:00Z",
+        "latest": "2025-11-19T10:23:45Z"
+      }
+    }
+  ],
+  "notFoundIn": []
+}
+```
+
+### 9. `find_working_query_examples`
+Search the codebase for existing working queries (requires file system access).
+
+**Parameters:**
+- `tableName` (string): Name of the table to find examples for
+
+**Note:** This tool currently returns a placeholder message indicating that file system access is needed. Future versions may integrate with VS Code's workspace API.
+
 ## How Token Management Works
 
 The MCP server manages Azure authentication tokens automatically:
@@ -272,3 +357,4 @@ MIT
 ## Contributing
 
 Issues and pull requests welcome!
+

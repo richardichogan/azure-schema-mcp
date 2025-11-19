@@ -13,6 +13,8 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { AuthManager } from './auth/AuthManager.js';
 import { SchemaDiscovery } from './services/SchemaDiscovery.js';
+import { CodeGeneration } from './services/CodeGeneration.js';
+
 import { loadConfig } from './config.js';
 
 async function main() {
@@ -24,6 +26,8 @@ async function main() {
 
   // Initialize schema discovery service
   const schemaDiscovery = new SchemaDiscovery(config, authManager);
+  const codeGeneration = new CodeGeneration(config, authManager, schemaDiscovery);
+
 
   // Create MCP server
   const server = new McpServer({
@@ -176,15 +180,144 @@ async function main() {
     }
   );
 
+
+  // Tool: Generate SDK Code
+  server.registerTool(
+    'generate_sdk_code',
+    {
+      title: 'Generate SDK Code',
+      description: 'Generate working TypeScript/JavaScript code to query an Azure Log Analytics table using the Azure Monitor Query SDK',
+      inputSchema: {
+        tableName: z.string().describe('Name of the table (e.g., "QualysHostDetectionV3_CL")'),
+        framework: z.enum(['react', 'node', 'inline']).default('inline').describe('Framework: react (MSAL browser), node (DefaultAzureCredential), or inline (generic)'),
+        authType: z.enum(['msal-browser', 'default-credential']).default('msal-browser').describe('Authentication type'),
+      },
+      outputSchema: {
+        code: z.string(),
+      },
+    },
+    async ({ tableName, framework, authType }) => {
+      const code = await codeGeneration.generateSDKCode({ tableName, framework, authType });
+      return {
+        content: [{
+          type: 'text',
+          text: code,
+        }],
+        structuredContent: { code },
+      };
+    }
+  );
+
+  // Tool: Generate Example Query
+  server.registerTool(
+    'generate_example_query',
+    {
+      title: 'Generate Example Query',
+      description: 'Generate working KQL query examples for a table based on its schema',
+      inputSchema: {
+        tableName: z.string().describe('Name of the table'),
+        operation: z.enum(['simple_select', 'filter', 'aggregation', 'parse_json', 'mv_expand']).describe('Type of query operation'),
+        timeRange: z.string().default('30d').describe('Time range in KQL format (default: 30d)'),
+      },
+      outputSchema: {
+        query: z.string(),
+      },
+    },
+    async ({ tableName, operation, timeRange }) => {
+      const query = await codeGeneration.generateExampleQuery({ tableName, operation, timeRange });
+      return {
+        content: [{
+          type: 'text',
+          text: query,
+        }],
+        structuredContent: { query },
+      };
+    }
+  );
+
+  // Tool: Detect Table Workspace
+  server.registerTool(
+    'detect_table_workspace',
+    {
+      title: 'Detect Table Workspace',
+      description: 'Test which workspace contains a specific table and return metadata about data availability',
+      inputSchema: {
+        tableName: z.string().describe('Name of the table to search for'),
+        workspaceIds: z.array(z.string()).optional().describe('Array of workspace IDs to check (optional)'),
+      },
+      outputSchema: {
+        tableName: z.string(),
+        foundIn: z.array(z.object({
+          workspaceId: z.string(),
+          workspaceName: z.string(),
+          hasData: z.boolean(),
+          rowCount: z.number().optional(),
+          dateRange: z.object({
+            earliest: z.string(),
+            latest: z.string(),
+          }).optional(),
+        })),
+        notFoundIn: z.array(z.object({
+          workspaceId: z.string(),
+          workspaceName: z.string(),
+          hasData: z.boolean(),
+          reason: z.string().optional(),
+        })),
+      },
+    },
+    async ({ tableName, workspaceIds }) => {
+      const result = await codeGeneration.detectTableWorkspace(tableName, workspaceIds);
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(result, null, 2),
+        }],
+        structuredContent: result,
+      };
+    }
+  );
+
+  // Tool: Find Working Query Examples
+  server.registerTool(
+    'find_working_query_examples',
+    {
+      title: 'Find Working Query Examples',
+      description: 'Search the codebase for existing working queries against a specific table',
+      inputSchema: {
+        tableName: z.string().describe('Name of the table to find examples for'),
+      },
+      outputSchema: {
+        tableName: z.string(),
+        message: z.string().optional(),
+        suggestion: z.string().optional(),
+        examples: z.array(z.any()),
+      },
+    },
+    async ({ tableName }) => {
+      const result = await codeGeneration.findWorkingQueryExamples(tableName);
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(result, null, 2),
+        }],
+        structuredContent: result,
+      };
+    }
+  );
+
   // Connect server to stdio transport
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
   console.error('Azure Schema MCP Server running on stdio');
-  console.error('Available tools: get_kql_table_schema, test_kql_query, list_tables, get_graph_api_schema, refresh_schema');
+  console.error('Available tools: get_kql_table_schema, test_kql_query, list_tables, get_graph_api_schema, refresh_schema, generate_sdk_code, generate_example_query, detect_table_workspace, find_working_query_examples');
 }
 
 main().catch((error) => {
   console.error('Fatal error:', error);
   process.exit(1);
 });
+
+
+
+

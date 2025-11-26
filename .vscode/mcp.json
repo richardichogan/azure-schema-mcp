@@ -3,7 +3,7 @@
     "azure-schema-mcp": {
       "type": "stdio",
       "command": "node",
-      "args": ["C:\\Users\\RichardHogan\\Development\\azure-schema-mcp\\build\\index.js"],
+      "args": ["C:\\Users\\RichardHogan\\Development\\Get-Scheme MCP Service\\build\\index.js"],
       "env": {
         "NODE_ENV": "production"
       }

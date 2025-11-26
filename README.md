@@ -9,13 +9,14 @@ An MCP (Model Context Protocol) server that provides AI assistants with the abil
 - **Table Listing**: List all available tables in your workspace
 - **Graph API Introspection**: Discover properties of Microsoft Graph API endpoints
 - **Intelligent Caching**: Two-layer caching (memory + disk) for fast responses
-- **Device Code Authentication**: User-friendly authentication with automatic token management
+- **Azure CLI Authentication**: Uses your existing Azure CLI credentials (or other DefaultAzureCredential sources)
 
 ## Prerequisites
 
 - Node.js 18 or higher
 - An Azure subscription with Log Analytics workspace
 - Azure Active Directory tenant
+- **Azure CLI installed and authenticated** (`az login`)
 
 ## Installation
 
@@ -56,26 +57,41 @@ An MCP (Model Context Protocol) server that provides AI assistants with the abil
    SCHEMA_CACHE_DIR=./.cache/schemas
    ```
 
-## First-Time Authentication
+## Authentication Setup
 
-The first time you use the MCP server, you'll need to authenticate with Azure:
+This MCP server uses **DefaultAzureCredential** which automatically tries multiple authentication methods in order:
 
-1. When the server starts, you'll see a message like:
-   ```
-   ╔═══════════════════════════════════════════════════════════════╗
-   ║                  AZURE AUTHENTICATION REQUIRED                 ║
-   ╚═══════════════════════════════════════════════════════════════╝
-   
-     Please visit: https://microsoft.com/devicelogin
-     And enter code: ABC123DEF
-   ```
+1. **Environment Variables** (Service Principal)
+2. **Azure CLI** (`az login`) - **Recommended for local development**
+3. **Visual Studio Code** (if signed in)
+4. **Managed Identity** (when running in Azure)
 
-2. Open the URL in your browser
-3. Enter the code shown
-4. Sign in with your Azure credentials
-5. Grant the requested permissions
+### Quick Start - Azure CLI (Recommended)
 
-The authentication token will be cached for ~90 days and automatically refreshed as needed.
+The easiest way to authenticate is to use the Azure CLI:
+
+```powershell
+# Install Azure CLI if not already installed
+# Download from: https://aka.ms/installazurecliwindows
+
+# Login to Azure
+az login
+
+# Verify your login
+az account show
+```
+
+Once logged in, the MCP server will automatically use your Azure CLI credentials. No device code flow needed!
+
+### Alternative - Service Principal (Production)
+
+For production or CI/CD scenarios, set environment variables:
+
+```powershell
+$env:AZURE_CLIENT_ID="your-client-id"
+$env:AZURE_CLIENT_SECRET="your-client-secret"
+$env:AZURE_TENANT_ID="your-tenant-id"
+```
 
 ## VS Code Integration
 
@@ -282,12 +298,12 @@ Search the codebase for existing working queries (requires file system access).
 
 ## How Token Management Works
 
-The MCP server manages Azure authentication tokens automatically:
+The MCP server manages Azure authentication tokens automatically using **DefaultAzureCredential**:
 
-1. **Initial Authentication**: Uses device code flow (user-friendly, no client secrets needed)
-2. **Token Caching**: Tokens are cached to `.cache/azure-token.json` (90-day lifetime)
+1. **Authentication**: Uses Azure CLI credentials (from `az login`) or other credential sources
+2. **Token Caching**: Tokens are cached to `.cache/azure-token.json`
 3. **Automatic Refresh**: Tokens are checked before each request and refreshed if expiring within 5 minutes
-4. **Re-authentication**: If a token expires, you'll see the device code prompt again
+4. **No User Interaction**: Works silently in the background - perfect for MCP servers!
 
 ## Cache Directories
 
@@ -318,9 +334,10 @@ npm run clean
 
 ### Authentication Errors
 If you see authentication errors:
-1. Delete `.cache/azure-token.json`
-2. Restart the MCP server
-3. Complete the device code flow again
+1. Make sure you're logged in with Azure CLI: `az login`
+2. Verify you have access to the workspace: `az monitor log-analytics workspace show --workspace-name <name> --resource-group <rg>`
+3. Delete `.cache/azure-token.json` to clear cached tokens
+4. Restart the MCP server
 
 ### "Table not found" Errors
 Make sure:

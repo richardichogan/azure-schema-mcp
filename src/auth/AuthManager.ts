@@ -1,4 +1,4 @@
-import { DeviceCodeCredential, AccessToken } from '@azure/identity';
+import { DefaultAzureCredential, AccessToken } from '@azure/identity';
 import { promises as fs } from 'fs';
 import path from 'path';
 import type { Config } from '../config.js';
@@ -10,7 +10,7 @@ interface CachedToken {
 
 export class AuthManager {
   private config: Config;
-  private credential: DeviceCodeCredential;
+  private credential: DefaultAzureCredential;
   private cachedToken: CachedToken | null = null;
   private tokenFilePath: string;
 
@@ -18,26 +18,20 @@ export class AuthManager {
     this.config = config;
     this.tokenFilePath = path.join(config.tokenCacheDir, 'azure-token.json');
 
-    // Create device code credential
-    this.credential = new DeviceCodeCredential({
+    // Use DefaultAzureCredential - tries multiple auth methods automatically:
+    // 1. Environment variables (AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID)
+    // 2. Azure CLI (az login)
+    // 3. Visual Studio Code
+    // 4. Managed Identity (when running in Azure)
+    this.credential = new DefaultAzureCredential({
       tenantId: config.tenantId,
-      clientId: '04b07795-8ddb-461a-bbee-02f9e1bf7b46', // Azure CLI client ID (public client)
-      userPromptCallback: (info) => {
-        console.error('\n╔═══════════════════════════════════════════════════════════════╗');
-        console.error('║                  AZURE AUTHENTICATION REQUIRED                 ║');
-        console.error('╚═══════════════════════════════════════════════════════════════╝\n');
-        console.error(`  Please visit: ${info.verificationUri}`);
-        console.error(`  And enter code: ${info.userCode}\n`);
-        console.error('  Waiting for authentication...\n');
-      },
     });
   }
 
   /**
    * Get an access token, using cached token if still valid or acquiring a new one
-   * Note: Always requests both Log Analytics and Graph API scopes to avoid re-authentication
    */
-  async getToken(scopes: string[] = ['https://api.loganalytics.io/.default', 'https://graph.microsoft.com/.default']): Promise<string> {
+  async getToken(scopes: string[] = ['https://api.loganalytics.io/.default']): Promise<string> {
     // Check if cached token is still valid
     if (this.cachedToken && this.cachedToken.expiresOn > Date.now()) {
       return this.cachedToken.token;
@@ -50,11 +44,10 @@ export class AuthManager {
     }
 
     // Token expired or doesn't exist, get a new one
-    console.error('Acquiring new access token...');
     const tokenResponse = await this.credential.getToken(scopes);
 
     if (!tokenResponse) {
-      throw new Error('Failed to acquire access token');
+      throw new Error('Failed to acquire access token. Make sure you are authenticated with Azure CLI (run: az login)');
     }
 
     // Cache the token
@@ -66,22 +59,20 @@ export class AuthManager {
     // Save to disk
     await this.saveCachedToken();
 
-    console.error('✓ Token acquired and cached successfully\n');
     return tokenResponse.token;
   }
 
   /**
-   * Get Microsoft Graph token (uses same token with both scopes)
+   * Get Microsoft Graph token
    */
   async getGraphToken(): Promise<string> {
-    return this.getToken();
+    return this.getToken(['https://graph.microsoft.com/.default']);
   }
 
   /**
    * Force token refresh
    */
   async refreshToken(): Promise<string> {
-    console.error('Forcing token refresh...');
     this.cachedToken = null;
     await this.deleteCachedToken();
     return this.getToken();
